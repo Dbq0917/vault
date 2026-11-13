@@ -174,6 +174,12 @@ func (b *databaseBackend) secretCredsRevoke() framework.OperationFunc {
 			return nil, err
 		}
 
+		// Reclaim the pooled connection along with the revoked user. Leased
+		// credentials are often abandoned (e.g. the leasing application
+		// restarted and never renewed), and the physical sessions the plugin
+		// holds open would otherwise pile up on the database server.
+		b.recycleConnection(dbi)
+
 		recordDatabaseObservation(ctx, b, req, dbName, ObservationTypeDatabaseCredentialRevoke,
 			AdditionalDatabaseMetadata{key: "role_name", value: roleNameString})
 

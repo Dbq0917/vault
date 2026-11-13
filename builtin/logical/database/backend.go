@@ -385,6 +385,23 @@ func (b *databaseBackend) CloseIfShutdown(db *dbPluginInstance, err error) {
 	}
 }
 
+// recycleConnection removes the given connection from the pool and closes it,
+// so physical sessions held open by the plugin are reclaimed instead of
+// lingering after the credentials that used them are gone. The next request
+// lazily establishes a fresh connection.
+func (b *databaseBackend) recycleConnection(db *dbPluginInstance) {
+	// Only recycle if this instance is still the active one; a newer
+	// instance may already have replaced it (e.g. config update).
+	if b.connections.PopIfEqual(db.name, db.id) == nil {
+		return
+	}
+
+	// Close asynchronously: callers may hold the instance read lock (e.g.
+	// revoke, or a concurrent renew) and Close takes the write lock, so a
+	// synchronous close here could deadlock renew against revoke.
+	go db.Close()
+}
+
 type initializeConnectionResult struct {
 	resp v5.InitializeResponse
 	err  error
